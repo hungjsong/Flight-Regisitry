@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+	<script src="https://code.jquery.com/jquery-3.5.1.min.js" integrity="sha256-9/aliU8dGd2tb6OSsuzixeV4y/faTqgFtohetphbbj0=" crossorigin="anonymous"></script>
+	<link rel="stylesheet" href="css/bootstrap.min.css">
+	<script src="js/vex/vex.combined.min.js"></script>
+	<script>vex.defaultOptions.className = 'vex-theme-wireframe'</script>
+	<link rel="stylesheet" href="css/vex/vex.css" />
+	<link rel="stylesheet" href="css/vex/vex-theme-wireframe.css" />
+	<script src="https://cdn.jsdelivr.net/gh/linways/table-to-excel@v1.0.4/dist/tableToExcel.js"></script>
+	<title>Flight Registry</title>
+</head>
+<body>
+<!-- Navigation Bar -->
+<div id="navbar" style="display: none;">
+	<nav class="navbar navbar-expand-lg navbar-light bg-light">
+		<a class="navbar-brand" href="#">Flight Registry</a>
+		<button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+			<span class="navbar-toggler-icon"></span>
+		</button>
+	  
+		<div class="collapse navbar-collapse" id="navbarSupportedContent">
+			<ul class="navbar-nav mr-auto">
+				<li class="nav-item">
+					<a class="nav-link" href="#" id="navbarSummary">Summary</a>
+				</li>
+				<li class="nav-item">
+					<a class="nav-link" href="#" id="navbarFlightSummary">Flight List</a>
+				</li>
+				<li class="nav-item">
+					<a class="nav-link" href="#" id="navbarCrewSummary">Crew Member List</a>
+				</li>
+			</ul>
+			
+			<ul class="navbar-nav ml-auto">
+				<div class="dropdown" id="flightViewActions">
+					<button class="btn btn-secondary dropdown-toggle" style="margin-right: 10px;" type="button" id="downloadButton"  data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+						Flight View Actions
+					</button>
+					<div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+						<button class="dropdown-item" id="addNewFlight">Add New Flight</button>
+						<button class="dropdown-item" id="downloadFlightSummary">Download Flight list</button>
+					</div>
+				</div>
+				<div class="dropdown" id="crewViewActions">
+					<button class="btn btn-secondary dropdown-toggle" type="button" id="downloadButton" style="margin-right: 10px;" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+						Crew View Actions
+					</button>
+					<div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+						<button class="dropdown-item" id="addNewCrewMember">Add New Crew Member</button>
+						<button class="dropdown-item" id="downloadCrewSummary">Download Crew Member list</button>	
+					</div>
+				</div>
+				<form class="form-inline my-2 my-lg-0" id="flightsSearch">
+					<input class="form-control mr-sm-2" id="flightSearchID" onkeyup="searchFlight()" type="text" placeholder="Search Flights">
+				</form>
+				<form class="form-inline my-2 my-lg-0" id="crewsSearch">
+					<input class="form-control mr-sm-2" id="crewSearchID" onkeyup="searchCrew()" type="text" placeholder="Search Crew Members">
+				</form>
+				<li class="nav-item">
+					<a class="nav-link" href="#" id="menuLogout">Logout</a>
+				</li>
+			</ul>
+		</div>
+	</nav>
+</div>
+	
+<div class="container-fluid"> <!-- This div class helps with padding -->
+	<!-- Login Page Div -->
+	<div class="text-center" id = "login">
+		<h1>Flight Registry Login</h1>
+		<p>Please enter your login credentials below</p>
+		<form id="formLogin">
+			<input type="text" name="username" id="usernameID" placeholder="Username" style="align: center" required>
+			<br><input type="password" name="password" id="passwordID" placeholder="Password" style="align: center" required>
+			<br><button type="submit" class="btn btn-secondary" style="background-color:#ffffff'">Login</button>
+		</form>
+	</div>
+
+	<!-- Summary Div -->
+	<div class="row" id ="summary" style="display: none">
+	<table class="table">
+		<thead id="summaryHead"></thead>
+		<tbody id="summaryBody"></tbody>
+	</table>
+	</div>
+	
+	<!-- Flight Summary Div -->
+	<div class="row" id ="flightsSummary" style="display: none">
+		<table class="table" id="flightTable">
+			<thead id="flightsHead"></thead>
+			<tbody id="flightsBody"></tbody>
+		</table>
+	</div>
+	
+	<!-- Crew Summary Div -->
+	<div class="row" id ="crewSummary" style="display: none">
+		<table class="table" id="crewTable">
+			<thead id="crewHead"></thead>
+			<tbody id="crewBody"></tbody>
+		</table>
+	</div>
+</div>
+	
+<script src="js/popper.min.js"></script>
+<script src="js/bootstrap.min.js"></script>
+<script>
+	let myTokenID = "";
+	let dialog=null;
+	let currentView = "";
+	
+	<!-- Login and Logout Functions -->
+	$('#formLogin').submit(function(){
+		event.preventDefault();
+		
+		$.ajax({
+			type: 'post',
+			url: 'controllers/doLogin.php',
+			data: {username:$("#usernameID").val(), password: $("#passwordID").val()},
+			dataType: "JSON"
+		})
+		.done(function(data) {
+			$("#usernameID").val(""); //Clears out username and password from text fields upon successful login.
+			$("#passwordID").val("");
+			myTokenID = data.tokenID;
+			loadSummaryData();
+			showSummaryView();
+		})
+		.fail(function( jqXHR, textStatus, errorThrown ) {
+			vex.dialog.alert("Incorrect username or password.");
+			showLogoutView();
+		});
+		return false;
+	});
+	
+	$("#menuLogout").click(function() {
+		$.ajax({
+			type: 'post',
+			url: 'controllers/doLogout.php',
+			data: {tokenID: myTokenID},
+			dataType: "JSON"
+		})
+		.done(function(data) {
+			showLogoutView();
+		})
+		.fail(function( jqXHR, textStatus, errorThrown ) {
+			vex.dialog.alert("Failed to logout.");
+			showLogoutView();
+		});
+	});
+	
+	<!-- Loading View Functions -->
+	$("#navbarFlightSummary").click(function() {
+		loadFlightSummaryData();
+		showFlightSummaryView();
+	});
+	
+	$("#navbarCrewSummary").click(function() {
+		loadCrewSummaryData();
+		showCrewSummaryView();
+	});	
+	
+	$("#navbarSummary").click(function() {
+		loadSummaryData();
+		showSummaryView();
+	});	
+	
+	function showFlightSummaryView() {
+		$("#login").hide();
+		$("#flightsSummary").show();
+		$("#summary").hide();
+		$("#crewSummary").hide()
+		$("#flightsSearch").show();
+		$("#crewsSearch").hide();
+		$("#crewViewActions").hide();
+		$("#flightViewActions").show();
+	}
+
+	function showCrewSummaryView() {
+		$("#login").hide();
+		$("#flightsSummary").hide();
+		$("#summary").hide();
+		$("#crewSummary").show();
+		$("#flightsSearch").hide();
+		$("#crewsSearch").show();
+		$("#crewViewActions").show();
+		$("#flightViewActions").hide();
+	}
+	
+	function showSummaryView() {
+		$("#login").hide();
+		$("#flightsSummary").hide();
+		$("#crewSummary").hide();
+		$("#summary").show();
+		$("#navbar").show();
+		$("#flightsSearch").hide();
+		$("#crewsSearch").hide();
+		$("#crewViewActions").hide();
+		$("#flightViewActions").hide();
+	}
+	
+	function showLogoutView() {
+		$("#login").show();
+		$("#flightsSummary").hide();
+		$("#crewSummary").hide();
+		$("#summary").hide();
+		$("#navbar").hide();
+	}
+	
+	<!-- Reading Functions -->
+	function loadFlightSummaryData(){
+		$.ajax({
+		type: 'post',
+		url: 'controllers/getSummaryFlights.php',
+		data: {tokenID: myTokenID},
+		dataType: "JSON"
+		})
+		.done(function(allFlights) {
+			$("#flightsBody").empty();
+			$("#flightsHead").empty();
+			$("#flightsHead").append('<tr>' +
+			'<th>No.</th>' +
+			'<th>Airline Name</th>' +
+			'<th>Flight Number</th>' +
+			'<th># of Seats</th>' +
+			'<th>Country</th>' +
+			'<th>Call Sign</th>' +
+			'<th>Crew Count<a style="color:red;" href="#" data-toggle="tooltip" data-placement="top" title="If the number is red, it means flight crew is full.">* </a></th>' +
+			'<th data-exclude="true">Update</th>' +
+			'<th data-exclude="true">Delete</th>' +
+			'</tr>');
+			
+			
+			$.each(allFlights, function(index, flight) {
+			$crewCount = flight.crewCount == 5 ? '<p style ="color:red;">' + flight.crewCount + '</p>' : flight.crewCount;
+			$("#flightsBody").append('<tr><th scope="row">'+(index+1)+'</th>'+
+				'<td>'+'<img src=/FlightRegistry/img/'+flight.alias+'.jpg width="40" height="40">'+' '+flight.airlineName+'</td>'+
+				'<td>'+flight.flightNumber+'</td>'+
+				'<td>'+flight.capacity+'</td>'+
+				'<td>'+'<img src=/FlightRegistry/img/flags/'+flight.countryCode+'.png width="30" height="30">'+' '+flight.country+'</td>'+
+				'<td>'+flight.callSign+'</td>'+
+				'<td>'+$crewCount+'</td>'+
+				'<td><input type="image" src=/FlightRegistry/img/update.png width="24" height="24" onclick=\'requestUpdateFlight('+flight.airline+',"'+flight.airlineID+'",'+flight.capacity+','+flight.id+',"'+flight.airlineName+'","'+flight.alias+'")\';/></td>'+
+				'<td><input type="image" src=/FlightRegistry/img/delete.png width="24" height="24" onclick=\'requestFlightDeletion('+flight.id+',"'+flight.airlineName+'","'+flight.alias+'","'+flight.airlineID+'",'+flight.crewCount+')\';/></td>'+
+				'</tr>');
+			});
+			showFlightSummaryView();
+		})
+		.fail(function(  jqXHR, textStatus, errorThrown ){
+			vex.dialog.alert("Failed to load flight summary data");
+		})
+	}
+	
+	function loadCrewSummaryData(){
+		$.ajax({
+			type: 'post',
+			url: 'controllers/getSummaryCrewMembers.php',
+			data: {tokenID: myTokenID},
+			dataType: "JSON"
+		})
+		.done(function(allCrews) {
+			$("#crewBody").empty();
+			$("#crewHead").empty();
+			$("#crewHead").append('<tr>' +
+			'<th>No.</th>' +
+			'<th>Name</th>' +
+			'<th>Age</th>' +
+			'<th>Gender</th>' +
+			'<th>Nationality</th>' +
+			'<th>Assigned Flight</th>' +
+			'<th data-exclude="true">Update</th>' +
+			'<th data-exclude="true">Delete</th>' +
+			'<th data-exclude="true">Assign/Remove</th>' +
+			'</tr>');
+
+			$.each(allCrews, function(index, crewMember) {
+			$("#crewBody").append('<tr><th scope="row">'+(index+1)+'</th>'+
+				'<td>'+crewMember.fullName+'</td>'+
+				'<td>'+crewMember.age+'</td>'+
+				'<td>'+crewMember.gender+'</td>'+
+				'<td>'+'<img src=/FlightRegistry/img/flags/'+crewMember.countryCode+'.png width="30" height="30">'+' '+crewMember.nationality+'</td>'+
+				'<td>'+'<img src=/FlightRegistry/img/'+crewMember.alias+'.jpg width="30" height="30">'+" "+crewMember.assignedFlight+'</td>'+
+				'<td><input type="image" src=/FlightRegistry/img/update.png width="24" height="24" onclick=\'requestUpdateCrew('+crewMember.id+',"'+escape(crewMember.firstName)+'","'+escape(crewMember.lastName)+'",'+crewMember.age+',"'+crewMember.gender+'","'+crewMember.nationality+'",'+crewMember.country+')\';/></td>'+
+				'<td><input type="image" src=/FlightRegistry/img/delete.png width="24" height="24" onclick=\'requestCrewMemberDeletion('+crewMember.id+',"'+escape(crewMember.firstName)+'","'+escape(crewMember.lastName)+'",'+crewMember.flightID+',"'+crewMember.assignedFlight+'")\';/></td>'+
+				'<td><input type="image" src=/FlightRegistry/img/assign.png width="24" height="24" onclick=\'requestAssignFlight('+crewMember.id+',"'+escape(crewMember.firstName)+'","'+escape(crewMember.lastName)+'",'+crewMember.flightID+')\';/></td>'+
+				'</tr>');
+			});
+			showCrewSummaryView();
+		})
+		.fail(function(  jqXHR, textStatus, errorThrown ){
+			vex.dialog.alert("Failed to load crew summary data");
+		})
+	}
+	
+	function loadSummaryData(){
+		$.ajax({
+			type: 'post',
+			url: 'controllers/getSummary.php',
+			data: {tokenID: myTokenID},
+			dataType: "JSON"
+		})
+		.done(function(allFlightCrews) {
+			$("#summaryHead").empty();
+			$("#summaryBody").empty();
+			$("#summaryHead").append('<tr>' +
+			'<th>No.</th>' +
+			'<th>Airline (Flight Number)</th>' +
+			'<th>Crew Member (Age)</th>' +
+			'</tr>');
+			
+			$.each(allFlightCrews, function(index, FlightCrew) {
+			$("#summaryBody").append('<tr><th scope="row">'+(index+1)+'</th>'+
+				'<td>'+'<img src=/FlightRegistry/img/'+FlightCrew.alias+'.jpg width="100" height="100">'+' '+FlightCrew.airlineDetails+'</td>'+
+				'<td>'+FlightCrew.crewMemberDetails+'</td>'+
+				'</tr>');
+			});
+			showSummaryView();
+		})
+		.fail(function(  jqXHR, textStatus, errorThrown ){
+			vex.dialog.alert("Failed to load Summary data");
+		})
+	}
+	
+	<!-- Creating Functions -->
+	$("#addNewFlight" ).button().on("click", function() {
+		retrieveAirlines();
+		vex.dialog.open({
+			message: 'Add NEW Flight',
+			overlayClosesOnClick: false,
+			input: [
+				'<label for="airline">Airline:</label>' +
+				'<select name="airline" id="airline" required>' + 
+				'</select>' +
+				'<label for="airlineID">Airline ID:</label>' +
+				'<input type="number" name="airlineID" value="" placeholder="enter airline ID" min="1" max="9999" required/>' +
+				'<label for="capacity">Number of Seats:</label>' +
+				'<input type="number" name="capacity" value="" placeholder="enter seat capacity" min="100" max="500" required />'
+			].join(''),
+			buttons: [
+				$.extend({}, vex.dialog.buttons.YES, { text: 'Submit' }),
+				$.extend({}, vex.dialog.buttons.NO, { text: 'Cancel' })
+			],
+			callback: function (data) {
+				if (!data) {
+					console.log('Cancelled')
+				} else {
+					addFlight(data.airline, data.airlineID, data.capacity);
+				}
+			}
+		})
+	});
+	
+	$("#addNewCrewMember").button().on("click", function() {
+		retrieveCountries();
+		vex.dialog.open({
+			message: 'Add NEW crew member',
+			overlayClosesOnClick: false,
+			input: [
+				'<label for="firstName">First Name:</label>' +
+				'<input type="text" name="firstName" value="" pattern="[A-Za-z\'\-]{1,}" title="Please don\'t insert numbers or special characters" placeholder="enter first name" required />' +
+				'<label for="lastName">Last Name:</label>' +
+				'<input type="text" name="lastName" value="" pattern="[A-Za-z\'\-]{1,}" title="Please don\'t insert numbers or special characters" placeholder="enter last name" required/>' +
+				'<label for="gender">Gender:</label>' +
+				'<select name="gender" required>' + 
+					'<option value="Male">Male</option>' +
+					'<option value="Female">Female</option>' +
+					'<option value="Other">Other</option>' +
+				'</select>' +
+				'<label for="age">Age:</label>' +
+				'<input type="number" name="age" value="" placeholder="enter age" min="18" max="100" required />' +
+				'<label for="nationality">Nationality:</label>' +
+				'<select name="country" id="country" required>' + 
+				'</select>'
+			].join(''),
+			buttons: [
+				$.extend({}, vex.dialog.buttons.YES, { text: 'Submit' }),
+				$.extend({}, vex.dialog.buttons.NO, { text: 'Cancel' })
+			],
+			callback: function (data) {
+				if (!data) {
+					console.log('Cancelled')
+				} else {
+					addCrewMember(data.firstName, data.lastName, data.gender, data.age, data.country);
+				}
+			}
+		})
+	});
+	
+	function addFlight(newAirline, newAirlineID, newCapacity) {
+			$.ajax({		
+				type: 'post',
+				url: 'controllers/addFlight.php',
+				data: {tokenID: myTokenID, airline: newAirline, airlineID: newAirlineID, capacity: newCapacity},
+				dataType: "JSON"
+			})
+			.done(function() {		
+				loadFlightSummaryData();
+			})
+			.fail(function( jqXHR, textStatus, errorThrown ) {
+				vex.dialog.alert(jqXHR.responseJSON);
+			});
+	}
+	
+	function addCrewMember(newFirstName, newLastName, newGender, newAge, newNationality) {
+			$.ajax({		
+				type: 'post',
+				url: 'controllers/addCrewMember.php',
+				data: {tokenID: myTokenID, firstName: newFirstName, lastName: newLastName, gender: newGender, age: newAge, country: newNationality},
+				dataType: "JSON"
+			})
+			.done(function() {		
+				loadCrewSummaryData();
+			})
+			.fail(function( jqXHR, textStatus, errorThrown ) {
+				vex.dialog.alert("Failed to add new crew member");
+			});
+	}
+	
+	function retrieveCountries(){
+		$.ajax({
+			type: 'post',
+			url: 'controllers/getCountries.php',
+			data: {tokenID: myTokenID},
+			dataType: "JSON"
+		})
+		.done(function(countryData) {
+			$.each(countryData, function(index, countries) {
+				$("#country").append(
+					'<option value="' + countries.id + '">'+ countries.countryName +'</option>'
+				);
+			});
+		})
+		.fail(function(  jqXHR, textStatus, errorThrown ){
+			vex.dialog.alert("Failed to load country data");
+		})
+	}
+	
+	function retrieveAirlines(){
+		$.ajax({
+			type: 'post',
+			url: 'controllers/getAirline.php',
+			data: {tokenID: myTokenID},
+			dataType: "JSON"
+		})
+		.done(function(airlineData) {
+			$.each(airlineData, function(index, airlines) {
+				$("#airline").append(
+					'<option value="' + airlines.id + '">'+ airlines.airlineName + " - " + airlines.alias + '</option>'
+				);
+			});
+		})
+		.fail(function(  jqXHR, textStatus, errorThrown ){
+			vex.dialog.alert("Failed to load airline data");
+		})
+	}
+	
+	function retrieveNonFullFlights(){
+		$.ajax({
+			type: 'post',
+			url: 'controllers/getNonFullFlights.php',
+			data: {tokenID: myTokenID},
+			dataType: "JSON"
+		})
+		.done(function(allFlights) {
+			$.each(allFlights, function(index, flights) {
+				$("#airline").append(
+					'<option value="' + flights.id + '">'+ flights.airlineName + " - (" + flights.alias + ' ' + flights.airlineID + ')</option>'
+				);
+			});
+		})
+		.fail(function(  jqXHR, textStatus, errorThrown ){
+			vex.dialog.alert("Failed to load airline data");
+		})
+	}
+	
+	<!-- Update Functions -->
+	function requestUpdateCrew(id, currentFirstName, currentLastName, currentAge, currentGender, currentNationality, currentCountry) {
+			retrieveCountries();
+			currentFirstName = unescape(currentFirstName);
+			currentLastName = unescape(currentLastName);
+			vex.dialog.open({
+				message: 'Update ' + currentFirstName + ' ' + currentLastName,
+				overlayClosesOnClick: false,
+				input: [				
+				'<label for="firstName">First Name:</label>' +
+				'<input type="text" name="firstName" value="'+currentFirstName+'" pattern="[A-Za-z\'\-]{1,}" title="Please don\'t insert numbers or special characters" placeholder="enter first name" required />' +
+				'<label for="lastName">Last Name:</label>' +
+				'<input type="text" name="lastName" value="'+ currentLastName+'" pattern="[A-Za-z\'\-]{1,}" title="Please don\'t insert numbers or special characters" placeholder="enter last name" required/>' +
+				'<label for="gender">Gender:</label>' +
+				'<select name="gender" required>' + 
+					'<option value="' + currentGender + '" selected disabled>' + currentGender + '</option>' +
+					'<option value="Male">Male</option>' +
+					'<option value="Female">Female</option>' +
+					'<option value="Other">Other</option>' +
+				'</select>' +
+				'<label for="age">Age:</label>' +
+				'<input type="number" name="age" value="'+currentAge+'" placeholder="enter age" min="18" max="100" required />' +
+				'<label for="country">Nationality:</label>' +
+				'<select name="country" id="country" required>' + 
+					'<option value="' + currentCountry + '" selected disabled>' + currentNationality + '</option>' +
+				'</select>'
+				].join(''),
+				buttons: [
+					$.extend({}, vex.dialog.buttons.YES, { text: 'Update' }),
+					$.extend({}, vex.dialog.buttons.NO, { text: 'Cancel' })
+				],
+				callback: function (data) {
+					if (data) {
+						updateCrewMember(id, data.firstName, data.lastName, data.gender, data.age, data.country);
+					}
+				}
+			})
+		}
+		
+	function requestUpdateFlight(currentAirline, currentAirlineID, currentCapacity, id, currentAirlineName, currentAlias) {
+		retrieveAirlines();
+		vex.dialog.open({
+			message: 'Update ' + currentAirlineName + ' - (' + currentAlias + ' ' + currentAirlineID + ')',
+			overlayClosesOnClick: false,
+			input: [
+			'Airline:' +
+			'<select name="airline" id="airline" required>' + 
+				'<option value="' + currentAirline + '" selected disabled> '+ currentAirlineName + ' - ' + currentAlias + '</option>' +
+			'</select>' +				
+			'<label for="airlineID">Airline ID:</label>' +
+			'<input type="number" name="airlineID" value="' + currentAirlineID + '" placeholder="enter airline id" min="1" max="9999" required />' +
+			'<label for="capacity">Number of Seats:</label>' +
+			'<input type="number" name="capacity" value="' + currentCapacity + '" placeholder="enter number of seats" min="100" max="500" required />' 		
+			].join(''),
+			buttons: [
+				$.extend({}, vex.dialog.buttons.YES, { text: 'Update' }),
+				$.extend({}, vex.dialog.buttons.NO, { text: 'Cancel' })
+			],
+			callback: function (data) {
+				if (data) {
+					updateFlight(data.airline, data.airlineID,  data.capacity, id);
+				}
+			}
+		})
+	}
+	
+	function updateCrewMember(newID, newFirstName, newLastName, newGender, newAge, newCountry) {
+		$.ajax({		
+			type: 'post',
+			url: 'controllers/updateCrewMember.php',
+			data: {tokenID: myTokenID, id: newID, firstName: newFirstName, lastName: newLastName, gender: newGender, age: newAge, country: newCountry},
+			dataType: "JSON"
+		})
+		.done(function() {		
+			loadCrewSummaryData();
+		})
+		.fail(function( jqXHR, textStatus, errorThrown ) {
+			vex.dialog.alert("Failed to update crew member");
+		});
+	}
+		
+	function updateFlight(newAirline, newAirlineID, newCapacity, newID) {
+		$.ajax({		
+			type: 'post',
+			url: 'controllers/updateFlight.php',
+			data: {tokenID: myTokenID, id: newID, airline: newAirline, airlineID: newAirlineID, capacity: newCapacity},
+			dataType: "JSON"
+		})
+		.done(function() {		
+			loadFlightSummaryData();
+		})
+		.fail(function( jqXHR, textStatus, errorThrown ) {
+			vex.dialog.alert(jqXHR.responseJSON);
+		});
+	}
+	
+	function requestAssignFlight(crewMemberID, firstName, lastName, currentFlightID) {
+		retrieveNonFullFlights();
+		firstName = unescape(firstName);
+		lastName = unescape(lastName);
+		vex.dialog.open({
+			message: 'Assign ' + firstName + ' ' + lastName + ' to a Flight',
+			overlayClosesOnClick: false,
+			input: [				
+			'<select name="airline" id="airline" required>' + 
+				'<option value="null" selected>N/A - (Remove from Flight)</option>' +
+			'</select>'
+			].join(''),
+			buttons: [
+				$.extend({}, vex.dialog.buttons.YES, { text: 'Assign' }),
+				$.extend({}, vex.dialog.buttons.NO, { text: 'Cancel' })
+			],
+			callback: function (data) {
+				if (data) {
+					assignFlight(crewMemberID, data.airline, currentFlightID);
+				}
+			}
+		})
+	}	
+	
+	function assignFlight(crewMemberID, newFlightID, currentFlightID) {
+		$.ajax({		
+			type: 'post',
+			url: 'controllers/assignFlight.php',
+			data: {tokenID: myTokenID, crewMemberID: crewMemberID, newFlightID: newFlightID, currentFlightID: currentFlightID},
+			dataType: "JSON"
+		})
+		.done(function() {		
+			loadCrewSummaryData();
+		})
+		.fail(function( jqXHR, textStatus, errorThrown ) {
+			vex.dialog.alert(jqXHR.responseJSON);
+		});
+	}
+	
+	<!-- Delete Functions -->
+	function requestFlightDeletion(id, airlineName, alias, airlineID, crewCount) {
+		vex.dialog.open({
+			message: 'Delete flight ' + airlineName + ' - (' + alias + ' ' + airlineID +')?',
+			overlayClosesOnClick: false,
+			input: [(crewCount = crewCount > 0 ? "This flight has " + crewCount + " crew members. Are you sure you want to delete this flight?<br>" : "") +
+			'<input type="checkbox" id="confirm" required> <label for="confirm"> Confirm Deletion</label>'
+			].join(''),
+			buttons: [
+				$.extend({}, vex.dialog.buttons.YES, { text: 'DELETE' }),
+				$.extend({}, vex.dialog.buttons.NO, { text: 'Cancel' })
+			],
+			callback: function (data) {
+				if (data) {
+					deleteFlight(id);
+				}
+			}
+		})
+	}	
+
+	function deleteFlight(id) {
+		$.ajax({		
+			type: 'post',
+			url: 'controllers/deleteFlight.php',
+			data: {tokenID: myTokenID, id: id},
+			dataType: "JSON"
+		})
+		.done(function() {		
+			loadFlightSummaryData();
+		})
+		.fail(function( jqXHR, textStatus, errorThrown ) {
+			vex.dialog.alert("Failed to delete flight");
+		});
+	}
+	
+	function requestCrewMemberDeletion(id, firstName, lastName, currentFlightID, currentAssignedFlight) {
+		firstName = unescape(firstName);
+		lastName = unescape(lastName);
+		vex.dialog.open({
+			message: 'Delete crew member ' + firstName + ' ' + lastName + '?',
+			overlayClosesOnClick: false,
+			input: [(currentFlightID !== null ? "This crew member is currently assigned to flight " + currentAssignedFlight + ".<br>" : "") +
+			'<input type="checkbox" id="confirm" required> <label for="confirm"> Confirm Deletion</label>'].join(''),
+			buttons: [
+				$.extend({}, vex.dialog.buttons.YES, { text: 'DELETE' }),
+				$.extend({}, vex.dialog.buttons.NO, { text: 'Cancel' })
+			],
+			callback: function (data) {
+				if (data) {
+					deleteCrewMember(id, currentFlightID);
+				}
+			}
+		})
+	}
+	
+	function deleteCrewMember(id, currentFlightID) {
+			$.ajax({		
+				type: 'post',
+				url: 'controllers/deleteCrewMember.php',
+				data: {tokenID: myTokenID, id: id, currentFlightID: currentFlightID},
+				dataType: "JSON"
+			})
+			.done(function() {		
+				loadCrewSummaryData();
+			})
+			.fail(function( jqXHR, textStatus, errorThrown ) {
+				vex.dialog.alert("Failed to delete crew member");
+			});
+	}
+	
+	<!-- Search Functions -->	
+	function searchFlight(){
+		currentView = "Flight";
+		
+		$.ajax({
+			type: 'post',
+			url: 'controllers/search.php',
+			data: {tokenID:myTokenID, currentView: currentView, searchTerm: $("#flightSearchID").val()},
+			dataType: "JSON"
+		})
+		.done(function(allFlights) {
+		if(allFlights[0] == null){
+			$("#flightsBody").empty();
+			$("#flightsHead").empty();
+			$("#flightsHead").append(
+			'<tr><th>No entries found matching search term: "' + $("#flightSearchID").val() + '"</th></tr>');
+			showFlightSummaryView();
+		}
+		else{
+			$("#flightsBody").empty();
+			$("#flightsHead").empty();
+			$("#flightsHead").append('<tr>' +
+			'<th>No.</th>' +
+			'<th>Airline Name</th>' +
+			'<th>Flight Number</th>' +
+			'<th># of Seats</th>' +
+			'<th>Country</th>' +
+			'<th>Call Sign</th>' +
+			'<th>Crew Count<a style="color:red;" href="#" data-toggle="tooltip" data-placement="top" title="If the number is red, it means flight crew is full.">* </a></th>' +
+			'<th data-exclude="true">Update</th>' +
+			'<th data-exclude="true">Delete</th>' +
+			'</tr>');
+			
+			$.each(allFlights, function(index, flight) {
+			
+			$matchingAirlineName = flight.matchingAirlineName !== "" ? "<mark>"+flight.matchingAirlineName+"</mark>" : flight.airlineName;
+			$matchingFlightNumber = flight.matchingFlightNumber !== "" ? "<mark>"+flight.matchingFlightNumber+"</mark>" : flight.flightNumber;
+			$matchingCapacity = flight.matchingCapacity !== "" ? "<mark>"+flight.matchingCapacity+"</mark>" : flight.capacity;
+			$matchingCountry = flight.matchingCountry !== "" ? "<mark>"+flight.matchingCountry+"</mark>" : flight.country;
+			$matchingCallSign = flight.matchingCallSign !== "" ? "<mark>"+flight.matchingCallSign+"</mark>" : flight.callSign;
+			$matchingCrewCount = (flight.matchingCrewCount !== "" && flight.matchingCrewCount == 5) ? '<mark style="color:red;">'+flight.matchingCrewCount+'</mark>' : (flight.matchingCrewCount !== "" ? "<mark>"+flight.matchingCrewCount+"</mark>" : (flight.crewCount == 5 ? '<p style="color:red">'+flight.crewCount+'</p>' : flight.crewCount));
+			
+			$("#flightsBody").append('<tr><th scope="row">'+(index+1)+'</th>'+
+				'<td>'+'<img src=/FlightRegistry/img/'+flight.alias+'.jpg width="40" height="40">'+' '+$matchingAirlineName+'</td>'+
+				'<td>'+$matchingFlightNumber+'</td>'+
+				'<td>'+$matchingCapacity+'</td>'+
+				'<td>'+'<img src=/FlightRegistry/img/flags/'+flight.countryCode+'.png width="30" height="30">'+' '+$matchingCountry+'</td>'+
+				'<td>'+$matchingCallSign+'</td>'+
+				'<td>'+$matchingCrewCount+'</td>'+
+				'<td><input type="image" src=/FlightRegistry/img/update.png width="24" height="24" onclick=\'requestUpdateFlight('+flight.airline+',"'+flight.airlineID+'",'+flight.capacity+','+flight.id+',"'+flight.airlineName+'","'+flight.alias+'")\';/></td>'+
+				'<td><input type="image" src=/FlightRegistry/img/delete.png width="24" height="24" onclick=\'requestFlightDeletion('+flight.id+',"'+flight.airlineName+'","'+flight.alias+'","'+flight.airlineID+'",'+flight.crewCount+')\';/></td>'+
+				'</tr>');
+			});
+			
+			showFlightSummaryView();
+		}
+		})
+		.fail(function(  jqXHR, textStatus, errorThrown ){
+			vex.dialog.alert("Failed to load search results.");
+		});
+	};
+	
+	function searchCrew(){
+		currentView = "Crew";
+		
+		$.ajax({
+			type: 'post',
+			url: 'controllers/search.php',
+			data: {tokenID:myTokenID, currentView: currentView, searchTerm: $("#crewSearchID").val()},
+			dataType: "JSON"
+		})
+		.done(function(allCrews) {
+			if(allCrews[0] == null){
+			$("#crewBody").empty();
+			$("#crewHead").empty();
+			$("#crewHead").append(
+			'<tr><th>No entries found matching search term: "' + $("#crewSearchID").val() + '"</th></tr>');
+			showCrewSummaryView();
+		}
+		else{
+			$("#crewBody").empty();
+			$("#crewHead").empty();
+			$("#crewHead").append('<tr>' +
+			'<th>No.</th>' +
+			'<th>Name</th>' +
+			'<th>Age</th>' +
+			'<th>Gender</th>' +
+			'<th>Nationality</th>' +
+			'<th>Assigned Flight</th>' +
+			'<th data-exclude="true">Update</th>' +
+			'<th data-exclude="true">Delete</th>' +
+			'<th data-exclude="true">Assign/Remove</th>' +
+			'</tr>');
+
+			$.each(allCrews, function(index, crewMember) {
+			
+			$matchingFullName = crewMember.matchingFullName !== "" ? '<mark>' + crewMember.matchingFullName + '</mark>' : crewMember.fullName;
+			$matchingAge = crewMember.matchingAge !== "" ? '<mark>' + crewMember.matchingAge + '</mark>' : crewMember.age;
+			$matchingGender = crewMember.matchingGender !== "" ? '<mark>' + crewMember.matchingGender + '</mark>' : crewMember.gender;
+			$matchingNationality = crewMember.matchingNationality !== "" ? '<mark>' + crewMember.matchingNationality + '</mark>' : crewMember.nationality;
+			$matchingAssignedFlight = crewMember.matchingAssignedFlight !== "" ? '<mark>' + crewMember.matchingAssignedFlight + '</mark>' : crewMember.assignedFlight;
+			
+			$("#crewBody").append('<tr><th scope="row">'+(index+1)+'</th>'+ 
+				'<td>' + $matchingFullName + '</td>' +
+				'<td>' + $matchingAge + '</td>' +
+				'<td>' +  $matchingGender + '</td>' +
+				'<td>'+'<img src=/FlightRegistry/img/flags/'+crewMember.countryCode+'.png width="30" height="30">'+' '+$matchingNationality+'</td>'+
+				'<td>'+'<img src=/FlightRegistry/img/'+crewMember.alias+'.jpg width="30" height="30">'+" "+ $matchingAssignedFlight + '</td>' +
+				'<td><input type="image" src=/FlightRegistry/img/update.png width="24" height="24" onclick=\'requestUpdateCrew('+crewMember.id+',"'+escape(crewMember.firstName)+'","'+escape(crewMember.lastName)+'",'+crewMember.age+',"'+crewMember.gender+'","'+crewMember.nationality+'",'+crewMember.country+')\';/></td>'+
+				'<td><input type="image" src=/FlightRegistry/img/delete.png width="24" height="24" onclick=\'requestCrewMemberDeletion('+crewMember.id+',"'+escape(crewMember.firstName)+'","'+escape(crewMember.lastName)+'",'+crewMember.flightID+',"'+crewMember.assignedFlight+'")\';/></td>'+
+				'<td><input type="image" src=/FlightRegistry/img/assign.png width="24" height="24" onclick=\'requestAssignFlight('+crewMember.id+',"'+escape(crewMember.firstName)+'","'+escape(crewMember.lastName)+'",'+crewMember.flightID+')\';/></td>'+
+				'</tr>');
+			});
+			showCrewSummaryView();
+		}
+		})
+		.fail(function(  jqXHR, textStatus, errorThrown ){
+			vex.dialog.alert("Failed to load search results.");
+		});
+	};
+	
+	<!-- Excel Document Generator -->
+	const buttonFlights = document.querySelector("#downloadFlightSummary");
+	const buttonCrewMembers = document.querySelector("#downloadCrewSummary");
+
+	buttonFlights.addEventListener("click", e => {
+		const flightsTable = document.querySelector("#flightTable");
+		TableToExcel.convert(flightsTable, {
+			name: "Flight.xlsx",
+			sheet: {
+				name: "Flights"
+			}
+		});
+	});
+	
+	buttonCrewMembers.addEventListener("click", e => {
+		const crewMembersTable = document.querySelector("#crewTable");
+		TableToExcel.convert(crewMembersTable, {
+			name: "Crew.xlsx",
+			sheet: {
+				name: "Crew Members"
+			}
+		});
+	});
+</script>
+</body>
+</html>
