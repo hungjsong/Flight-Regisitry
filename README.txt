@@ -1,4 +1,4 @@
-Name: Hung Jie Song
+Programmer Name: Hung Jie Song
 Github Link: https://github.com/hungjsong/Flight-Regisitry
 
 
